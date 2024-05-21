@@ -27,47 +27,60 @@ int port = 2000;
 
 // create pipe
 int fds[2];
-char in_buff[MSG_SIZE];
+char in_buff[BUFFER_SIZE];
 int num_read = 0;
 
 sem_t *sem01,*sem02;
 
+int numOfClient = 0;
+int orderOfClient[25];
+
 // create the data's structure
 LinkedList data ={NULL,NULL};
 
-void *handle_client(void *arg) {
-    int sock = *(int*)arg;
-    free(arg); // Free the allocated memory for the socket descriptor
-
-    char buffer[1024];
-    int sensor_id;
-    double temperature;
-    time_t timestamp;
-
-    while (recv(sock, buffer, sizeof(buffer), 0) > 0) {
-        //sscanf(buffer, "%d %lf %ld", &sensor_id, &temperature, &timestamp);
-        //pthread_mutex_lock(&mutex_lock01);
-        //Node* newNode = (Node*)malloc(sizeof(Node));
-        //newNode->sensor_id = sensor_id;
-        //newNode->temperature = temperature;
-        //strcpy(newNode->timestamp, timestamp);
-        //newNode->next = data.head;
-        //data.head = newNode;
-        //pthread_mutex_unlock(&mutex_lock01);
-        write(fds[1], buffer, MSG_SIZE);
-        printf("done putting data into pipe\n");
-
-        sem_post(sem01);
-
-        // Log the received data
-        //char log_message[256];
-        //sprintf(log_message, "Sensor %d: Temp=%.2f at %s", sensor_id, temperature, ctime(&timestamp));
-        //write(fds[1], log_message, strlen(log_message));
+void parseAndUpdateNode(LinkedList* list, int nodeIndex, const char* message) {
+    char* copy = strdup(message);
+    if (!copy) {
+        perror("Failed to duplicate message string");
+        exit(EXIT_FAILURE);
     }
 
-    close(sock);
-    return NULL;
+    char* token;
+    char timestamp[50] = {0};
+    int room_id = 0;
+    float temperature = 0.0;
+
+    // Lấy timestamp
+    token = strtok(copy, " -"); // Sử dụng " -" để ngăn cắt số phút và giây
+    if (token != NULL) {
+        strncpy(timestamp, token, sizeof(timestamp) - 1);
+        timestamp[sizeof(timestamp) - 1] = '\0';
+    }
+
+    // Lấy room ID
+    token = strtok(NULL, " -");
+    if (token != NULL) {
+        room_id = atoi(token);
+    }
+
+    // Lấy temperature
+    token = strtok(NULL, " -");
+    if (token != NULL) {
+        temperature = atof(token);
+    }
+
+    Node* node = getNodeAt(list, nodeIndex);
+    if (node != NULL) {
+        strncpy(node->timestamp, timestamp, sizeof(node->timestamp) - 1);
+        node->timestamp[sizeof(node->timestamp) - 1] = '\0';
+        node->sensor_id = room_id;
+        node->temperature = temperature;
+    }
+
+    free(copy);
 }
+
+
 
 static void* thread_handler(void *args){
     pthread_detach(pthread_self());
@@ -76,9 +89,10 @@ static void* thread_handler(void *args){
     pthread_t tid = pthread_self();
     if(pthread_equal(tid1,tid)){
         //create server socket
-        int server_fd,*client_sock;
+        int server_fd,*client_sock,epoll_fd,new_sock;
         struct sockaddr_in server, client;
         socklen_t c = sizeof(struct sockaddr_in);
+         struct epoll_event event, events[MAX_EVENTS];
 
         // Set up the socket
         server_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -92,6 +106,7 @@ static void* thread_handler(void *args){
         server.sin_port = htons(port);
 
         if (bind(server_fd, (struct sockaddr *)&server, sizeof(server)) < 0) {
+            kill(main_pid,9);
             perror("Bind failed");
             exit(EXIT_FAILURE);
         }
@@ -101,39 +116,100 @@ static void* thread_handler(void *args){
             exit(EXIT_FAILURE);
         }
 
+        // Set the server socket to non-blocking
+        set_socket_non_block(server_fd);
+
         printf("Maximum 20 client.\n");
         printf("Hearing any clinet .....\n");
 
-        for(int i = 0;i<20;i++){
-            int index = appendEmptyNode(data);
-            printf("index : %d\n",index);
-            client_sock = malloc(sizeof(int));
-            *client_sock = accept(server_fd, (struct sockaddr *)&client, &c);
-            printf("client number %d connect to server.\n",i);
-            if (*client_sock < 0) {
-                free(client_sock);
-                continue;
-            }
-
-            pthread_t thread_id;
-            if (pthread_create(&thread_id, NULL, handle_client, client_sock) < 0) {
-                perror("Could not create thread");
-                close(*client_sock);
-                free(client_sock);
-            }
-
-            pthread_detach(thread_id);
-            sleep(60);
+        // Create an epoll instance
+        epoll_fd = epoll_create1(0);
+        if (epoll_fd == -1) {
+            perror("epoll_create1");
+            exit(EXIT_FAILURE);
         }
 
+        event.data.fd = server_fd;
+        event.events = EPOLLIN;
+        if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_fd, &event) == -1) {
+            perror("epoll_ctl");
+            exit(EXIT_FAILURE);
+        }
 
+        while (1)
+        {
+            int n = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
+            if(n == -1){
+                perror("epoll_wait");
+                exit(EXIT_FAILURE);
+            }
+
+            for(int i=0;i<n;i++){
+                if(events[i].data.fd == server_fd){
+                    new_sock = accept(server_fd, (struct sockaddr *)&client, &c);
+                    if(new_sock == -1){
+                        perror("accept");
+                        exit(EXIT_FAILURE);
+                    }
+                    if(new_sock > 0 ){
+                        numOfClient ++;
+                        printf("%d sensor connect to server\n",numOfClient);
+                        orderOfClient[numOfClient] = new_sock;
+                        appendEmptyNode(data);
+                        data->head->sensor_id = numOfClient;
+                    }
+                    set_socket_non_block(new_sock);
+                    event.data.fd = new_sock;
+                    event.events = EPOLLIN | EPOLLET;
+                    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, new_sock,&event) == -1) {
+                        perror("epoll_ctl: conn_sock");
+                        exit(EXIT_FAILURE);
+                    }
+                }else{
+                    int done = 0;
+                    while (1) {
+                        ssize_t count;
+                        char buf[BUFFER_SIZE];
+
+                        count = read(events[i].data.fd, buf, sizeof buf);
+                        if (count == -1) {
+                            // If errno == EAGAIN, that means we have read all data
+                            if (errno != EAGAIN) {
+                                perror("read");
+                                done = 1;
+                            }
+                            break;
+                        } else if (count == 0) {
+                            // End of file
+                            done = 1;
+                            break;
+                        }
+                        parseAndUpdateNode(data,i,buf);
+                        printf("%s\n",buf);
+                        write(fds[1], buf, BUFFER_SIZE);
+                        printf("done putting data into pipe\n");
+                        sem_post(sem01);
+                    }
+                    if (done) {
+                        printf("Closed connection on descriptor %d\n", events[i].data.fd);
+                        close(events[i].data.fd);
+                        numOfClient--;
+                        printf("1 sensor disconnect to server\n");
+                    }
+                }
+            }
+        }
     }else if(pthread_equal(tid2,tid)){
         while(1){
             sem_wait(sem02);
-            printf("manager\n");
             Node* current = data->head;
+            int count = 1;
+            
+            printList(data);
             while (current != NULL)
             {
+                printf("Temperature %d \n",count);
+                count++;
                 printf("%f\n",current->temperature);
                 if(current->temperature > 30) printf("too hot\n");
                 if((current->temperature <= 30) && (current->temperature > 25)) printf("warn\n");
@@ -161,10 +237,6 @@ int main(int argc, char* argv[]){
     if (argc > 1) {
         port = atoi(argv[1]);
     }
-
-    append(&data,"15:33",30,1,1);
-    Node* first = getFirst(&data);
-    printf("%s - %.1f - %d\n",first->timestamp,first->temperature,first->sensor_id);
 
     if(pipe(fds)<0){
         printf("pipe() unsuccessfully\n");
@@ -207,7 +279,7 @@ int main(int argc, char* argv[]){
             printf("wait to write the log file\n");
             sem_wait(sem01); // sem = 0 (block)
             
-            num_read = read(fds[0], in_buff, MSG_SIZE);
+            num_read = read(fds[0], in_buff, BUFFER_SIZE);
             if (num_read == -1) {
                 printf("read() failed\n");
                 exit(0);
@@ -218,8 +290,8 @@ int main(int argc, char* argv[]){
                 printf("msg: %s\n", in_buff);
             }
         // write data to logfile 
-            char final_mes[MSG_SIZE + 14];
-            snprintf(final_mes,MSG_SIZE + 14,"%s - connection\n",in_buff);
+            char final_mes[BUFFER_SIZE + 14];
+            snprintf(final_mes,BUFFER_SIZE + 14,"%s - connection\n",in_buff);
             char* text_log = final_mes;
             ssize_t bytes_written = write(fd,text_log,strlen(text_log));
             if(bytes_written == -1)

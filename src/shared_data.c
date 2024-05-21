@@ -119,3 +119,15 @@ void deleteNodeWithId(LinkedList* list,int sensor_id){
     }
     free(current);
 }
+
+void printList(LinkedList* list){
+    Node *current = list->head;
+    printf("List info:\n");
+    while(current != NULL){
+        printf("timestamp : %s\n",current->timestamp);
+        printf("temp :%f\n",current->temperature);
+        current = current->next;
+    }
+    printf("---END---\n");
+    free(current);
+}

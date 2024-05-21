@@ -25,5 +25,6 @@ Node* getFirst(LinkedList* list);
 Node* getLast(LinkedList* list);
 void deleteNode(LinkedList* list, const char* timestamp);
 void deleteNodeWithId(LinkedList* list,int sensor_id);
+void printList(LinkedList* list);
 
 #endif // LINKED_LIST_H
