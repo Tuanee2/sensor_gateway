@@ -38,7 +38,8 @@ int orderOfClient[25];
 // create the data's structure
 LinkedList data ={NULL,NULL};
 
-void parseAndUpdateNode(LinkedList* list, int nodeIndex, const char* message) {
+int parseAndUpdateNode(LinkedList* list, const char* message) {
+    int cond=0;
     char* copy = strdup(message);
     if (!copy) {
         perror("Failed to duplicate message string");
@@ -69,15 +70,21 @@ void parseAndUpdateNode(LinkedList* list, int nodeIndex, const char* message) {
         temperature = atof(token);
     }
 
-    Node* node = getNodeAt(list, nodeIndex);
-    if (node != NULL) {
-        strncpy(node->timestamp, timestamp, sizeof(node->timestamp) - 1);
-        node->timestamp[sizeof(node->timestamp) - 1] = '\0';
-        node->sensor_id = room_id;
-        node->temperature = temperature;
-    }
 
+
+    Node* node = getNodeWithId(list, room_id);
+    if(node == NULL){
+        node = list->tail;
+        cond = 1;
+    }
+    
+    strncpy(node->timestamp, timestamp, sizeof(node->timestamp) - 1);
+    node->timestamp[sizeof(node->timestamp) - 1] = '\0';
+    node->sensor_id = room_id;
+    node->temperature = temperature;
+    
     free(copy);
+    return cond;
 }
 
 
@@ -106,7 +113,9 @@ static void* thread_handler(void *args){
         server.sin_port = htons(port);
 
         if (bind(server_fd, (struct sockaddr *)&server, sizeof(server)) < 0) {
-            kill(main_pid,9);
+            // kill the log_process
+            kill(log_pid, 15);
+            wait(NULL);
             perror("Bind failed");
             exit(EXIT_FAILURE);
         }
@@ -156,7 +165,6 @@ static void* thread_handler(void *args){
                         printf("%d sensor connect to server\n",numOfClient);
                         orderOfClient[numOfClient] = new_sock;
                         appendEmptyNode(data);
-                        data->head->sensor_id = numOfClient;
                     }
                     set_socket_non_block(new_sock);
                     event.data.fd = new_sock;
@@ -184,11 +192,14 @@ static void* thread_handler(void *args){
                             done = 1;
                             break;
                         }
-                        parseAndUpdateNode(data,i,buf);
-                        printf("%s\n",buf);
-                        write(fds[1], buf, BUFFER_SIZE);
-                        printf("done putting data into pipe\n");
-                        sem_post(sem01);
+                        if(parseAndUpdateNode(data,buf) == 1){
+                            printf("%s\n",buf);
+                            write(fds[1], buf, BUFFER_SIZE);
+                            printf("done putting data into pipe\n");
+                            sem_post(sem01);
+                        }else{
+                            sem_post(sem02);
+                        }
                     }
                     if (done) {
                         printf("Closed connection on descriptor %d\n", events[i].data.fd);
@@ -212,8 +223,6 @@ static void* thread_handler(void *args){
                 count++;
                 printf("%f\n",current->temperature);
                 if(current->temperature > 30) printf("too hot\n");
-                if((current->temperature <= 30) && (current->temperature > 25)) printf("warn\n");
-                if((current->temperature <= 25) && (current->temperature >= 20)) printf("cool\n");
                 if(current->temperature <20 ) printf("cold\n");
                 current = current->next;
             }
@@ -227,6 +236,10 @@ int set_socket_non_block(int socket_fd){
     if ((flags = fcntl(socket_fd, F_GETFL, 0)) == -1)
         flags = 0;
     return fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK);
+}
+
+void signalHandler(int sig) {
+    exit(0);  // Exit when SIGTERM is received
 }
 
 int main(int argc, char* argv[]){
@@ -276,9 +289,9 @@ int main(int argc, char* argv[]){
             exit(EXIT_FAILURE);
         }
         while(1){
-            printf("wait to write the log file\n");
-            sem_wait(sem01); // sem = 0 (block)
             
+            sem_wait(sem01); // sem = 0 (block)
+            printf("Write the log file\n");
             num_read = read(fds[0], in_buff, BUFFER_SIZE);
             if (num_read == -1) {
                 printf("read() failed\n");
@@ -300,7 +313,6 @@ int main(int argc, char* argv[]){
                 exit(EXIT_FAILURE);
             }
             printf("Writting data is completed.\n");
-            sem_post(sem02);
         }
 
     }else{

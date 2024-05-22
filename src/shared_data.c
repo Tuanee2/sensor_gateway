@@ -76,6 +76,26 @@ Node* getNodeAt(LinkedList* list, int n) {
     return current;
 }
 
+Node* getNodeWithSock(LinkedList* list, int sock_fd) {
+    Node* current = list->head;
+    int count = 0;
+    while ((current != NULL) && (current->client_sock != sock_fd)) {
+        current = current->next;
+        count++;
+    }
+    return current;
+}
+
+Node* getNodeWithId(LinkedList* list, int id) {
+    Node* current = list->head;
+    int count = 0;
+    while ((current != NULL) && (current->sensor_id != id)) {
+        current = current->next;
+        count++;
+    }
+    return current;
+}
+
 Node* getFirst(LinkedList* list) {
     return list->head;
 }
@@ -122,12 +142,13 @@ void deleteNodeWithId(LinkedList* list,int sensor_id){
 
 void printList(LinkedList* list){
     Node *current = list->head;
-    printf("List info:\n");
+    printf("\nList info:\n");
     while(current != NULL){
+        printf("room : %d\n",current->sensor_id);
         printf("timestamp : %s\n",current->timestamp);
         printf("temp :%f\n",current->temperature);
         current = current->next;
     }
-    printf("---END---\n");
+    printf("---END---\n\n");
     free(current);
 }

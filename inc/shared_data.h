@@ -21,6 +21,8 @@ int appendEmptyNode(LinkedList* list);
 Node* createNode(const char* timestamp, float temperature,int sensor_id,int client_sock);
 void append(LinkedList* list, const char* timestamp, float temperature,int sensor_id,int client_sock);
 Node* getNodeAt(LinkedList* list, int n);
+Node* getNodeWithSock(LinkedList* list, int n);
+Node* getNodeWithId(LinkedList* list, int id);
 Node* getFirst(LinkedList* list);
 Node* getLast(LinkedList* list);
 void deleteNode(LinkedList* list, const char* timestamp);

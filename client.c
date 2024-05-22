@@ -16,7 +16,7 @@
 void send_info(int server_fd)
 {
     int numb_write;
-    char sendbuff[BUFF_SIZE],roomid[10];
+    char sendbuff[BUFF_SIZE],infobuff[BUFF_SIZE+95],roomid[10];
     time_t rawtime;
     struct tm *timeinfo;
     char timebuff[80]; // Bộ đệm để chứa thời gian dưới dạng chuỗi
@@ -25,6 +25,15 @@ void send_info(int server_fd)
     printf("Please enter the room id: ");
     fgets(roomid, 10, stdin);
     roomid[strcspn(roomid, "\n")] = 0;
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+    strftime(timebuff, sizeof(timebuff), "%Y/%m/%d_%H:%M:%S", timeinfo);
+    snprintf(infobuff, BUFF_SIZE + 95, "%s-%s", timebuff, roomid);
+    numb_write = write(server_fd, infobuff, strlen(infobuff));
+    if (numb_write == -1){
+        handle_error("write()");
+    }
+
 
     while (1) {
         memset(sendbuff, '0', BUFF_SIZE);
@@ -35,11 +44,13 @@ void send_info(int server_fd)
         // Lấy thời gian hiện tại
         time(&rawtime);
         timeinfo = localtime(&rawtime);
-        strftime(timebuff, sizeof(timebuff), "%Y-%m-%d %H:%M:%S", timeinfo);
+        strftime(timebuff, sizeof(timebuff), "%Y/%m/%d_%H:%M:%S", timeinfo);
 
         // Gộp thời gian và nhiệt độ vào cùng một chuỗi, thời gian trước, nhiệt độ sau
-        char final_message[BUFF_SIZE + 95 ];
-        snprintf(final_message, BUFF_SIZE + 95, "%s - %s - %s\n", timebuff, roomid, sendbuff);
+        char final_message[BUFF_SIZE+95];
+        snprintf(final_message, BUFF_SIZE + 95, "%s-%s-%s", timebuff, roomid, sendbuff);
+
+        printf("%s\n",final_message);
 
         /* Gửi thông điệp tới server bằng hàm write */
         numb_write = write(server_fd, final_message, strlen(final_message));
