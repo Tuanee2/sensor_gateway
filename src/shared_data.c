@@ -11,7 +11,9 @@ Node* createEmptyNode() {
         printf("Memory allocation failed.\n");
         exit(1);
     }
-    newNode->client_sock = 0;  // Giá trị mặc định
+    strcpy(newNode->ip, "");  // Giá trị mặc định
+    newNode->sock = 0;
+    newNode->connection = 0;
     newNode->sensor_id = 0;    // Giá trị mặc định
     strcpy(newNode->timestamp, ""); // Chuỗi rỗng
     newNode->temperature = 0.0; // Nhiệt độ mặc định
@@ -41,13 +43,15 @@ int appendEmptyNode(LinkedList* list) {
     return index;
 }
 
-Node* createNode(const char* timestamp, float temperature,int sensor_id,int client_sock) {
+Node* createNode(const char* timestamp, float temperature,int sensor_id,int sock,char* ip) {
     Node* newNode = (Node*) malloc(sizeof(Node));
     if (newNode == NULL) {
         printf("Memory allocation failed.\n");
         exit(1);
     }
-    newNode->client_sock = client_sock;
+    strcpy(newNode->ip, ip);
+    newNode->sock = sock;
+    newNode->connection = 0;
     newNode->sensor_id = sensor_id;
     strcpy(newNode->timestamp, timestamp);
     newNode->temperature = temperature;
@@ -55,8 +59,8 @@ Node* createNode(const char* timestamp, float temperature,int sensor_id,int clie
     return newNode;
 }
 
-void append(LinkedList* list, const char* timestamp, float temperature,int sensor_id,int client_sock) {
-    Node* newNode = createNode(timestamp, temperature,sensor_id,client_sock);
+void append(LinkedList* list, const char* timestamp, float temperature,int sensor_id,int sock,char* ip) {
+    Node* newNode = createNode(timestamp, temperature,sensor_id,sock,ip);
     if (list->head == NULL) {
         list->head = newNode;
         list->tail = newNode;
@@ -76,10 +80,20 @@ Node* getNodeAt(LinkedList* list, int n) {
     return current;
 }
 
-Node* getNodeWithSock(LinkedList* list, int sock_fd) {
+Node* getNodeWithIp(LinkedList* list, char* ip) {
     Node* current = list->head;
     int count = 0;
-    while ((current != NULL) && (current->client_sock != sock_fd)) {
+    while ((current != NULL) && (strcmp(current->ip, ip) != 0)) {
+        current = current->next;
+        count++;
+    }
+    return current;
+}
+
+Node* getNodeWithSock(LinkedList* list, int sock) {
+    Node* current = list->head;
+    int count = 0;
+    while ((current != NULL) && (current->sock != sock)) {
         current = current->next;
         count++;
     }
@@ -147,6 +161,7 @@ void printList(LinkedList* list){
         printf("room : %d\n",current->sensor_id);
         printf("timestamp : %s\n",current->timestamp);
         printf("temp :%f\n",current->temperature);
+        printf("sock : %d\n",current->sock);
         current = current->next;
     }
     printf("---END---\n\n");

@@ -27,7 +27,8 @@ int port = 2000;
 
 // create pipe
 int fds[2];
-char in_buff[BUFFER_SIZE];
+char in_buff[BUFFER_SIZE+14];
+size_t realBuffSize = 0;
 int num_read = 0;
 
 sem_t *sem01,*sem02;
@@ -38,7 +39,7 @@ int orderOfClient[25];
 // create the data's structure
 LinkedList data ={NULL,NULL};
 
-int parseAndUpdateNode(LinkedList* list, const char* message) {
+int parseAndUpdateNode(LinkedList* list, const char* message,int sock_fd) {
     int cond=0;
     char* copy = strdup(message);
     if (!copy) {
@@ -69,12 +70,11 @@ int parseAndUpdateNode(LinkedList* list, const char* message) {
     if (token != NULL) {
         temperature = atof(token);
     }
-
-
-
-    Node* node = getNodeWithId(list, room_id);
-    if(node == NULL){
-        node = list->tail;
+    
+    Node* node = getNodeWithSock(list,sock_fd);
+    
+    if(node->connection == 0){
+        node->connection = 1;
         cond = 1;
     }
     
@@ -156,15 +156,17 @@ static void* thread_handler(void *args){
             for(int i=0;i<n;i++){
                 if(events[i].data.fd == server_fd){
                     new_sock = accept(server_fd, (struct sockaddr *)&client, &c);
+                    printf("new sock : %d\n",new_sock);
                     if(new_sock == -1){
                         perror("accept");
                         exit(EXIT_FAILURE);
                     }
                     if(new_sock > 0 ){
-                        numOfClient ++;
-                        printf("%d sensor connect to server\n",numOfClient);
-                        orderOfClient[numOfClient] = new_sock;
                         appendEmptyNode(data);
+                        Node* cur = data->tail;
+                        //inet_ntop(AF_INET,&client.sin_addr,cur->ip,sizeof(cur->ip)); // get client of ip 
+                        cur->sock = new_sock;//get sock
+                        printList(data);
                     }
                     set_socket_non_block(new_sock);
                     event.data.fd = new_sock;
@@ -177,8 +179,7 @@ static void* thread_handler(void *args){
                     int done = 0;
                     while (1) {
                         ssize_t count;
-                        char buf[BUFFER_SIZE];
-
+                        char buf[BUFFER_SIZE] = "";
                         count = read(events[i].data.fd, buf, sizeof buf);
                         if (count == -1) {
                             // If errno == EAGAIN, that means we have read all data
@@ -192,20 +193,33 @@ static void* thread_handler(void *args){
                             done = 1;
                             break;
                         }
-                        if(parseAndUpdateNode(data,buf) == 1){
-                            printf("%s\n",buf);
-                            write(fds[1], buf, BUFFER_SIZE);
-                            printf("done putting data into pipe\n");
+                        if(parseAndUpdateNode(data,buf,events[i].data.fd) == 1){
+                            char connect_mes[BUFFER_SIZE + 14];
+                            snprintf(connect_mes,BUFFER_SIZE + 14,"%s - connection\n",buf);
+                            printf("%s\n",connect_mes);
+                            write(fds[1], connect_mes, BUFFER_SIZE);
                             sem_post(sem01);
                         }else{
                             sem_post(sem02);
                         }
                     }
                     if (done) {
-                        printf("Closed connection on descriptor %d\n", events[i].data.fd);
+                        char disconnect_mes[BUFFER_SIZE + 14] = "";
+                        Node* cur = getNodeWithSock(data,events[i].data.fd);
+                        // get time disconnect
+                        time_t rawtime;
+                        struct tm *timeinfo;
+                        char timebuff[80];
+                        time(&rawtime);
+                        timeinfo = localtime(&rawtime);
+                        strftime(timebuff, sizeof(timebuff), "%Y/%m/%d_%H:%M:%S", timeinfo);
+                        snprintf(disconnect_mes,BUFFER_SIZE,"%s-%d - disconnect\n",timebuff,cur->sensor_id);
+                        write(fds[1], disconnect_mes, BUFFER_SIZE);
+                        sem_post(sem01);
+                        printf("disconnect in %d\n",cur->sensor_id);
                         close(events[i].data.fd);
-                        numOfClient--;
-                        printf("1 sensor disconnect to server\n");
+                        deleteNodeWithId(data,cur->sensor_id);
+                        printList(data);
                     }
                 }
             }
@@ -219,9 +233,8 @@ static void* thread_handler(void *args){
             printList(data);
             while (current != NULL)
             {
-                printf("Temperature %d \n",count);
                 count++;
-                printf("%f\n",current->temperature);
+                printf("temp in %d : %f\n",current->sensor_id,current->temperature);
                 if(current->temperature > 30) printf("too hot\n");
                 if(current->temperature <20 ) printf("cold\n");
                 current = current->next;
@@ -291,28 +304,22 @@ int main(int argc, char* argv[]){
         while(1){
             
             sem_wait(sem01); // sem = 0 (block)
-            printf("Write the log file\n");
-            num_read = read(fds[0], in_buff, BUFFER_SIZE);
+            num_read = read(fds[0], in_buff, BUFFER_SIZE+14);
             if (num_read == -1) {
                 printf("read() failed\n");
                 exit(0);
             } else if (num_read == 0) {
                 printf("pipe end-of-pipe\n");
                     
-            } else {
-                printf("msg: %s\n", in_buff);
             }
         // write data to logfile 
-            char final_mes[BUFFER_SIZE + 14];
-            snprintf(final_mes,BUFFER_SIZE + 14,"%s - connection\n",in_buff);
-            char* text_log = final_mes;
+            char* text_log = in_buff;
             ssize_t bytes_written = write(fd,text_log,strlen(text_log));
             if(bytes_written == -1)
             {
                 perror("error to write data :((");
                 exit(EXIT_FAILURE);
             }
-            printf("Writting data is completed.\n");
         }
 
     }else{

@@ -4,7 +4,9 @@
 #define LINKED_LIST_H
 
 typedef struct Node {
-    int client_sock;
+    char ip[16];
+    int sock;
+    int connection;
     int sensor_id;
     char timestamp[20];  // Định dạng thời gian có thể là "YYYY-MM-DD HH:MM:SS"
     float temperature;
@@ -18,10 +20,11 @@ typedef struct LinkedList {
 
 Node* createEmptyNode();
 int appendEmptyNode(LinkedList* list); 
-Node* createNode(const char* timestamp, float temperature,int sensor_id,int client_sock);
-void append(LinkedList* list, const char* timestamp, float temperature,int sensor_id,int client_sock);
+Node* createNode(const char* timestamp, float temperature,int sensor_id,int sock,char* ip);
+void append(LinkedList* list, const char* timestamp, float temperature,int sensor_id,int sock,char* ip);
 Node* getNodeAt(LinkedList* list, int n);
-Node* getNodeWithSock(LinkedList* list, int n);
+Node* getNodeWithIp(LinkedList* list, char* ip);
+Node* getNodeWithSock(LinkedList* list, int sock);
 Node* getNodeWithId(LinkedList* list, int id);
 Node* getFirst(LinkedList* list);
 Node* getLast(LinkedList* list);
