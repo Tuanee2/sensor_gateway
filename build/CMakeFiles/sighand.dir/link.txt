@@ -1,2 +1,0 @@
-/Library/Developer/CommandLineTools/usr/bin/ar qc libsighand.a CMakeFiles/sighand.dir/src/sighand.c.o
-/Library/Developer/CommandLineTools/usr/bin/ranlib libsighand.a
