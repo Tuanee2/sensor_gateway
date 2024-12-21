@@ -1,0 +1,6 @@
+/Users/tuan/Documents/developer/sensorgateway/build/CMakeFiles/sighand.dir
+/Users/tuan/Documents/developer/sensorgateway/build/CMakeFiles/sensorlib.dir
+/Users/tuan/Documents/developer/sensorgateway/build/CMakeFiles/sensor_gateway.dir
+/Users/tuan/Documents/developer/sensorgateway/build/CMakeFiles/tem_sensor.dir
+/Users/tuan/Documents/developer/sensorgateway/build/CMakeFiles/edit_cache.dir
+/Users/tuan/Documents/developer/sensorgateway/build/CMakeFiles/rebuild_cache.dir
